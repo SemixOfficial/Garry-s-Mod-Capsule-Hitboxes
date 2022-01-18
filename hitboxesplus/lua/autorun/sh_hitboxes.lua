@@ -7,14 +7,39 @@ local ANGLE_ZERO = Angle(0, 0, 0)
 local g_hitbox_debug_intersection = CreateConVar("g_hitbox_debug_intersection", "0", {FCVAR_REPLICATED, FCVAR_DONTRECORD}, "debug ray capsule intersection algorithm", 0, 1)
 local g_hitbox_debug_positions = CreateConVar("g_hitbox_debug_positions", "0", {FCVAR_REPLICATED, FCVAR_DONTRECORD}, "debug bone positions", 0, 1)
 
+local modellist = {
+	"modeldata/player_css_cterrorist.lua",
+	"modeldata/player_css_terrorist.lua",
+	"modeldata/player_hl2_combine.lua",
+	"modeldata/player_hl2_generic_female.lua",
+	"modeldata/player_hl2_generic.lua",
+	"modeldata/player_hl2_metrocop_female.lua",
+	"modeldata/player_hl2_zombie_fast.lua",
+	"modeldata/player_hl2_zombie.lua",
+	"modeldata/player_hl2_zombine.lua",
+}
+
 function g_CapsuleHitboxes:LoadModelData()
-	local searchDir = "addons/hitboxesplus/lua/modeldata/"
-	local files, _ = file.Find(searchDir .. "*", "GAME", "nameasc")
+	-- local searchDir = "addons/hitboxesplus/lua/modeldata/"
+	-- local files, _ = file.Find(searchDir .. "*", "GAME", "nameasc")
 
-	for idx, fileName in pairs(files) do
-		AddCSLuaFile("modeldata/" .. fileName)
+	-- PrintTable(files)
 
-		local modeldata = include("modeldata/" .. fileName)
+	-- for idx, fileName in pairs(files) do
+	-- 	AddCSLuaFile("modeldata/" .. fileName)
+
+	-- 	local modeldata = include("modeldata/" .. fileName)
+	-- 	print(modeldata)
+	-- 	for _, model in pairs(modeldata.Models) do
+	-- 		self.ModelData[model] = table.Copy(modeldata.Capsules)
+	-- 	end
+	-- end
+
+	for idx, fileName in pairs(modellist) do
+		AddCSLuaFile(fileName)
+
+		local modeldata = include(fileName)
+		print(modeldata)
 		for _, model in pairs(modeldata.Models) do
 			self.ModelData[model] = table.Copy(modeldata.Capsules)
 		end
@@ -297,25 +322,19 @@ function g_CapsuleHitboxes:IntersectRayWithEntity(entity, model, trace)
 	return true
 end
 
-function g_CapsuleHitboxes:IntersectRayWithEntities(trace, tracefilter)
-	local entities = self:GetEntitiesWithCapsuleHitboxes()
-
+function g_CapsuleHitboxes:IntersectRayWithEntities(trace, entities)
 	for idx, entity in pairs(entities) do
-		if tracefilter[entity] then
-			continue
-		end
-
 		g_CapsuleHitboxes:IntersectRayWithEntity(entity, entity:GetModel(), trace)
 	end
 end
 
-function g_CapsuleHitboxes:GetEntitiesWithCapsuleHitboxes()
+function g_CapsuleHitboxes:GetEntitiesWithCapsuleHitboxes(filter)
 	local entities = {}
 	-- TODO: Nextbot support
-
 	for idx, entity in pairs(player.GetAll()) do
 		local model = entity:GetModel()
-		if self.ModelData[model] then
+		print(entity, filter)
+		if self.ModelData[model] and entity ~= filter then
 			table.insert(entities, entity)
 		end
 	end
