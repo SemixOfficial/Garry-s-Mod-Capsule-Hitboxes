@@ -16,7 +16,7 @@ local modellist = {
 	"modeldata/player_hl2_metrocop_female.lua",
 	"modeldata/player_hl2_zombie_fast.lua",
 	"modeldata/player_hl2_zombie.lua",
-	"modeldata/player_hl2_zombine.lua",
+	"modeldata/player_hl2_zombine.lua"
 }
 
 function g_CapsuleHitboxes:LoadModelData()
@@ -39,7 +39,6 @@ function g_CapsuleHitboxes:LoadModelData()
 		AddCSLuaFile(fileName)
 
 		local modeldata = include(fileName)
-		print(modeldata)
 		for _, model in pairs(modeldata.Models) do
 			self.ModelData[model] = table.Copy(modeldata.Capsules)
 		end
@@ -143,7 +142,8 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 	local zmin = LocalToWorld(mins, ANGLE_ZERO, pos, ang)
 	local zmax = LocalToWorld(maxs, ANGLE_ZERO, pos, ang)
 
-	local intersectPos = ray.HitPos
+	local hitPos = ray.HitPos
+	local hitNormal = ray.HitNormal
 	local rayStart = ray.StartPos
 	local rayDirection = ray.HitPos - ray.StartPos
 	rayDirection:Normalize()
@@ -192,12 +192,16 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 		end
 
 		if atmin < btmin then
-			intersectPos = rayStart + (rayDirection * atmin)
+			hitPos = rayStart + (rayDirection * atmin)
+			hitNormal = hitPos - zmax
 		else
-			intersectPos = rayStart + (rayDirection * btmin)
+			hitPos = rayStart + (rayDirection * btmin)
+			hitNormal = hitpos - zmin
 		end
 
-		return true, intersectPos
+		hitNormal:Normalize()
+
+		return true, hitPos, hitNormal
 	end
 
 	local discriminant = b * b - 4.0 * a * c
@@ -223,7 +227,8 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 		-- On sphere (A, r)...
 		local stintersect, stmin, _ = self:IntersectRayWithSphere(rayStart, rayDirection, zmax, radius)
 		if stintersect then
-			intersectPos = rayStart + (rayDirection * stmin)
+			hitPos = rayStart + (rayDirection * stmin)
+			hitNormal = hitPos - zmax
 		else
 			return false
 		end
@@ -231,16 +236,20 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 		-- On sphere (B, r)...
 		local stintersect, stmin, _ = self:IntersectRayWithSphere(rayStart, rayDirection, zmin, radius)
 		if stintersect then
-			intersectPos = rayStart + (rayDirection * stmin)
+			hitPos = rayStart + (rayDirection * stmin)
+			hitNormal = hitPos - zmin
 		else
 			return false
 		end
 	else
 		-- On the cylinder...
-		intersectPos = rayStart + (rayDirection * tmin)
+		hitPos = rayStart + (rayDirection * tmin)
+		hitNormal = hitPos - (zmax + AB * t_k1)
 	end
 
-	return true, intersectPos
+	hitNormal:Normalize()
+
+	return true, hitPos, hitNormal
 end
 
 function g_CapsuleHitboxes:IntersectRayWithEntity(entity, model, trace)
@@ -252,17 +261,25 @@ function g_CapsuleHitboxes:IntersectRayWithEntity(entity, model, trace)
 	local bboxsize = entity:OBBMins() - entity:OBBMaxs()
 	self:DrawCapsuleOverlay(entity:GetPos(), ANGLE_ZERO, VECTOR_ORIGIN, Vector(0, 0, -bboxsize.z + bboxsize.y * 0.5), bboxsize.y, Either(SERVER, Color(0, 0, 255, 255), Color(255, 0, 0, 255)), 4)
 
-	local intersection, intersectPos = self:IntersectRayWithCapsule(trace, entity:GetPos(), Angle(0, 0, 0), Vector(0, 0, 0), Vector(0, 0, -bboxsize.z + bboxsize.y * 0.5), bboxsize.y)
+	local intersection, hitPos, hitNormal  = self:IntersectRayWithCapsule(trace, entity:GetPos(), Angle(0, 0, 0), Vector(0, 0, 0), Vector(0, 0, -bboxsize.z + bboxsize.y * 0.5), bboxsize.y)
 	if not intersection then
 		-- We didn't intersect with the hull capsule which contains the hitbox capsules, therefore it is not possible to hit the hitbox capsules, so don't bother doing any more intersections.
 		return false
 	end
 
 	local rayStart = trace.StartPos
-	local rayDelta = trace.HitPos - trace.StartPos
+	local rayDelta = trace.HitPos - rayStart
+	local rayLengthSqr = rayDelta:LengthSqr()
+	local rayToCapsule = hitPos - rayStart
+
+	if rayToCapsule:LengthSqr() > rayLengthSqr then
+		-- We couldn't intersect with this capsule because it is too far away, abort the mission.
+		return false
+	end
 
 	local shortestRayHitPos = trace.HitPos
-	local shortestRayLengthSqr = rayDelta:LengthSqr()
+	local shortestRayHitNormal = trace.HitNormal
+	local shortestRayLengthSqr = rayLengthSqr
 	local shortestRayBoneName = ""
 	local shortestRayCapsuleId = 0
 
@@ -286,20 +303,21 @@ function g_CapsuleHitboxes:IntersectRayWithEntity(entity, model, trace)
 
 			self:DrawCapsuleOverlay(capsulePos, rotation, capsule.Mins, capsule.Maxs, capsule.Radius, Either(SERVER, Color(0, 0, 255, 255), Color(255, 0, 0, 255)), 4)
 
-			intersection, intersectPos = g_CapsuleHitboxes:IntersectRayWithCapsule(trace, capsulePos, rotation, capsule.Mins, capsule.Maxs, capsule.Radius)
+			intersection, hitPos, hitNormal = g_CapsuleHitboxes:IntersectRayWithCapsule(trace, capsulePos, rotation, capsule.Mins, capsule.Maxs, capsule.Radius)
 			if not intersection then
 				-- We didn't intersect with this capsule, no luck here...
 				continue
 			end
 
-			local rayLengthSqr = (intersectPos - rayStart):LengthSqr()
-			if rayLengthSqr > shortestRayLengthSqr then
+			local intersectRayLengthSqr = (hitPos - rayStart):LengthSqr()
+			if intersectRayLengthSqr > shortestRayLengthSqr then
 				-- Nope, too far, didn't intersect this one either...
 				continue
 			end
 
-			shortestRayHitPos = intersectPos
-			shortestRayLengthSqr = rayLengthSqr
+			shortestRayHitPos = hitPos
+			shortestRayHitNormal = hitNormal
+			shortestRayLengthSqr = intersectRayLengthSqr
 			shortestRayBoneName = boneName
 			shortestRayCapsuleId = idx
 		end
@@ -314,10 +332,19 @@ function g_CapsuleHitboxes:IntersectRayWithEntity(entity, model, trace)
 
 	-- We did our own intersection and changed the results, so let's fix up the trace data from the original Source trace.
 	trace.Hit = true
+	trace.HitSky = false
+	trace.HitWorld = false
+	trace.HitNonWorld = true
 	trace.HitPos = shortestRayHitPos
+	trace.HitNormal = shortestRayHitNormal
 	trace.Entity = entity
 	trace.Fraction = trace.Fraction * (shortestRayLengthSqr / rayDelta:LengthSqr())
 	trace.HitGroup = hitCapsule.HitGroup
+
+	local hitBoneId = entity:LookupBone(shortestRayBoneName)
+	if hitBoneId then
+		trace.SurfaceProps = util.GetSurfaceIndex(entity:GetBoneSurfaceProp(hitBoneId))
+	end
 
 	return true
 end
@@ -332,11 +359,16 @@ function g_CapsuleHitboxes:GetEntitiesWithCapsuleHitboxes(filter)
 	local entities = {}
 	-- TODO: Nextbot support
 	for idx, entity in pairs(player.GetAll()) do
-		local model = entity:GetModel()
-		print(entity, filter)
-		if self.ModelData[model] and entity ~= filter then
-			table.insert(entities, entity)
+		if entity:IsDormant() or not entity:Alive() then
+			continue
 		end
+
+		local model = entity:GetModel()
+		if not self.ModelData[model] or entity == filter then
+			continue
+		end
+
+		table.insert(entities, entity)
 	end
 
 	return entities
