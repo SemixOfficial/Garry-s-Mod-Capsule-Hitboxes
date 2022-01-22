@@ -158,15 +158,6 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 	local rayStart = ray.StartPos
 	local zmin = LocalToWorld(mins, ANGLE_ZERO, pos, ang)
 	local zmax = LocalToWorld(maxs, ANGLE_ZERO, pos, ang)
-	local dist, p1, _ = util.DistanceToLine(zmin, zmax, rayStart)
-
-	-- Special case, we are or have started inside the capsule, therefore we can just quit right here.
-	if dist <= radius then
-		local hitnormal = (rayStart - p1):GetNormalized()
-		local hitpos = p1 + hitnormal * radius
-
-		return dist <= radius, hitpos, hitnormal, true
-	end
 
 	local hitPos = ray.HitPos
 	local hitNormal = ray.HitNormal
@@ -246,35 +237,65 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 		tmax = temp
 	end
 
-	-- Now check to see if K1 and K2 are inside the line segment defined by A,B
-	local t_k1 = tmin * m + n
-	if t_k1 < 0.0 then
-		-- On sphere (A, r)...
-		local stintersect, stmin, _ = self:IntersectRayWithSphere(rayStart, rayDirection, zmax, radius)
-		if stintersect then
-			hitPos = rayStart + (rayDirection * stmin)
-			hitNormal = hitPos - zmax
+	local dist, _, _ = util.DistanceToLine(zmin, zmax, rayStart)
+
+	-- Special case, we are or have started inside the capsule, therefore we can just quit right here.
+	if dist <= radius then
+		local t_k2 = tmax * m + n
+		if t_k2 < 0 then
+			-- On sphere (A, r)...
+			local stintersect, _, stmax = self:IntersectRayWithSphere(rayStart, rayDirection, zmax, radius)
+			if stintersect then
+				hitPos = rayStart + (rayDirection * stmax)
+				hitNormal = hitPos - zmax
+			else
+				return false
+			end
+		elseif t_k2 > 1 then
+			-- On sphere (B, r)...
+			local stintersect, _, stmax = self:IntersectRayWithSphere(rayStart, rayDirection, zmin, radius)
+			if stintersect then
+				hitPos = rayStart + (rayDirection * stmax)
+				hitNormal = hitPos - zmin
+			else
+				return false
+			end
 		else
-			return false
-		end
-	elseif t_k1 > 1.0 then
-		-- On sphere (B, r)...
-		local stintersect, stmin, _ = self:IntersectRayWithSphere(rayStart, rayDirection, zmin, radius)
-		if stintersect then
-			hitPos = rayStart + (rayDirection * stmin)
-			hitNormal = hitPos - zmin
-		else
-			return false
+			-- The fucking cylinder again....
+			hitPos = rayStart + (rayDirection * tmax)
+			hitNormal = hitPos - (zmax + AB * t_k2)
 		end
 	else
-		-- On the cylinder...
-		hitPos = rayStart + (rayDirection * tmin)
-		hitNormal = hitPos - (zmax + AB * t_k1)
+		-- Now check to see if K1 and K2 are inside the line segment defined by A,B
+		local t_k1 = tmin * m + n
+		if t_k1 < 0 then
+			-- On sphere (A, r)...
+			local stintersect, stmin, _ = self:IntersectRayWithSphere(rayStart, rayDirection, zmax, radius)
+			if stintersect then
+				hitPos = rayStart + (rayDirection * stmin)
+				hitNormal = hitPos - zmax
+			else
+				return false
+			end
+		elseif t_k1 > 1 then
+			-- On sphere (B, r)...
+			local stintersect, stmin, _ = self:IntersectRayWithSphere(rayStart, rayDirection, zmin, radius)
+			if stintersect then
+				hitPos = rayStart + (rayDirection * stmin)
+				hitNormal = hitPos - zmin
+			else
+				return false
+			end
+		else
+			-- On the cylinder...
+			hitPos = rayStart + (rayDirection * tmin)
+			hitNormal = hitPos - (zmax + AB * t_k1)
+		end
 	end
 
 	hitNormal:Normalize()
 
-	return true, hitPos, hitNormal
+	return true, hitPos, hitNormal, dist <= radius
 end
 
 function g_CapsuleHitboxes:IntersectRayWithEntity(entity, model, trace)
