@@ -158,6 +158,7 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 	local rayStart = ray.StartPos
 	local zmin = LocalToWorld(mins, ANGLE_ZERO, pos, ang)
 	local zmax = LocalToWorld(maxs, ANGLE_ZERO, pos, ang)
+	local dist, _, _ = util.DistanceToLine(zmin, zmax, rayStart)
 
 	local hitPos = ray.HitPos
 	local hitNormal = ray.HitNormal
@@ -217,7 +218,7 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 
 		hitNormal:Normalize()
 
-		return true, hitPos, hitNormal
+		return true, hitPos, hitNormal, dist <= radius
 	end
 
 	local discriminant = b * b - 4.0 * a * c
@@ -236,8 +237,6 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 		tmin = tmax
 		tmax = temp
 	end
-
-	local dist, _, _ = util.DistanceToLine(zmin, zmax, rayStart)
 
 	-- Special case, we are or have started inside the capsule, therefore we can just quit right here.
 	if dist <= radius then
