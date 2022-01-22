@@ -75,6 +75,22 @@ function g_CapsuleHitboxes:DrawCapsuleOverlay(pos, ang, mins, maxs, radius, colo
 	color.a = alpha
 end
 
+function g_CapsuleHitboxes:IsPointWhitinCapsule(point, pos, ang, mins, maxs, radius)
+	local zmin = LocalToWorld(mins, ANGLE_ZERO, pos, ang)
+	local zmax = LocalToWorld(maxs, ANGLE_ZERO, pos, ang)
+	local dist, p1, _ = util.DistanceToLine(zmin, zmax, point)
+
+	local hitnormal = (point - p1):GetNormalized()
+	local hitpos = p1 + hitnormal * radius
+
+	if dist <= radius then
+		debugoverlay.Cross(hitpos, 3, 0.05, Color( 255, 255, 255 ), false)
+		debugoverlay.Line(hitpos, hitpos + hitnormal * radius)
+	end
+
+	return dist <= radius, hitpos, hitnormal
+end
+
 -- NOTE: This function doesn't calculate the normal because it's easily derived for a sphere (p - center).
 function g_CapsuleHitboxes:IntersectRayWithSphere(rayStart, rayDirection, pos, radius)
 	local delta = rayStart - pos
@@ -139,12 +155,21 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 	-- n = dot(AB, AO) / dot(AB, AB)
 	--
 
+	local rayStart = ray.StartPos
 	local zmin = LocalToWorld(mins, ANGLE_ZERO, pos, ang)
 	local zmax = LocalToWorld(maxs, ANGLE_ZERO, pos, ang)
+	local dist, p1, _ = util.DistanceToLine(zmin, zmax, rayStart)
+
+	-- Special case, we are or have started inside the capsule, therefore we can just quit right here.
+	if dist <= radius then
+		local hitnormal = (rayStart - p1):GetNormalized()
+		local hitpos = p1 + hitnormal * radius
+
+		return dist <= radius, hitpos, hitnormal, true
+	end
 
 	local hitPos = ray.HitPos
 	local hitNormal = ray.HitNormal
-	local rayStart = ray.StartPos
 	local rayDirection = ray.HitPos - ray.StartPos
 	rayDirection:Normalize()
 
@@ -412,5 +437,26 @@ hook.Add("UpdateAnimation", "capsule_hitboxes", function(ply, velocity, maxSeqGr
 		end
 	end
 end)
+
+-- hook.Add("HUDPaint", "test capsool", function()
+-- 	local pos, ang = Vector(0, 0, 0), Angle(0, 0, 0)
+-- 	local mins, maxs = Vector(0, 0, -8), Vector(0, 0, 8)
+-- 	local radius = 12
+
+-- 	local pointPos = LocalPlayer():GetShootPos() + LocalPlayer():GetAimVector() * 32
+-- 	local trace = LocalPlayer():GetEyeTrace()
+
+-- 	debugoverlay.Box(pointPos, Vector(-1, -1, -1), Vector(1, 1, 1), 0.05, Color(0, 255, 255, 10))
+
+-- 	local intersect, hitpos, hitnormal, bsolid = g_CapsuleHitboxes:IntersectRayWithCapsule(trace, pos, ang, mins, maxs, radius)
+-- 	local clr = Either(intersect, Color(84, 226, 55), Color(170, 16, 16))
+
+-- 	if intersect then
+-- 		debugoverlay.Cross(hitpos, 3, 0.05, Color( 255, 255, 255 ), false)
+-- 		debugoverlay.Line(hitpos, hitpos + hitnormal * 8, 0.05, Color(0, 255, 255, 255), false)
+-- 	end
+
+-- 	g_CapsuleHitboxes:DrawCapsuleOverlay(pos, ang, mins, maxs, radius, clr, 0.05)
+-- end)
 
 g_CapsuleHitboxes:LoadModelData()
