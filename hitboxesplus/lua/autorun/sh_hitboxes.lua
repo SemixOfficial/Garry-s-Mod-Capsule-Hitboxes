@@ -83,11 +83,6 @@ function g_CapsuleHitboxes:IsPointWhitinCapsule(point, pos, ang, mins, maxs, rad
 	local hitnormal = (point - p1):GetNormalized()
 	local hitpos = p1 + hitnormal * radius
 
-	if dist <= radius then
-		debugoverlay.Cross(hitpos, 3, 0.05, Color( 255, 255, 255 ), false)
-		debugoverlay.Line(hitpos, hitpos + hitnormal * radius)
-	end
-
 	return dist <= radius, hitpos, hitnormal
 end
 
@@ -98,6 +93,10 @@ function g_CapsuleHitboxes:IntersectRayWithSphere(rayStart, rayDirection, pos, r
 	local a = rayDirection:Dot(rayDirection)
 	local b = 2.0 * delta:Dot(rayDirection)
 	local c = delta:Dot(delta) - (radius * radius)
+
+	if b > 0 then
+		return
+	end
 
 	local discriminant = b * b - 4 * a * c
 	if discriminant < 0.0 then
@@ -158,7 +157,6 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 	local rayStart = ray.StartPos
 	local zmin = LocalToWorld(mins, ANGLE_ZERO, pos, ang)
 	local zmax = LocalToWorld(maxs, ANGLE_ZERO, pos, ang)
-	local dist, _, _ = util.DistanceToLine(zmin, zmax, rayStart)
 
 	local hitPos = ray.HitPos
 	local hitNormal = ray.HitNormal
@@ -187,6 +185,10 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 	local a = Q:Dot(Q)
 	local b = 2.0 * Q:Dot(R)
 	local c = R:Dot(R) - (radius * radius)
+
+	if b > 0 then
+		return false, hitpos, hitNormal, false
+	end
 
 	if a == 0.0 then
 		-- Special case: AB and ray direction are parallel. If there is an intersection it will be on the end spheres...
@@ -218,14 +220,14 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 
 		hitNormal:Normalize()
 
-		return true, hitPos, hitNormal, dist <= radius
+		return true, hitPos, hitNormal, false
 	end
 
 	local discriminant = b * b - 4.0 * a * c
 	if discriminant < 0.0 then
 		-- The ray doesn't hit the infinite cylinder defined by (A, B).
 		-- No intersection.
-		return false
+		return false, hitPos, hitNormal, false
 	end
 
 	discriminant = math.sqrt(discriminant)
@@ -237,6 +239,8 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 		tmin = tmax
 		tmax = temp
 	end
+
+	local dist, _, _ = util.DistanceToLine(zmin, zmax, rayStart)
 
 	-- Special case, we are or have started inside the capsule, therefore we can just quit right here.
 	if dist <= radius then
@@ -270,6 +274,7 @@ function g_CapsuleHitboxes:IntersectRayWithCapsule(ray, pos, ang, mins, maxs, ra
 		if t_k1 < 0 then
 			-- On sphere (A, r)...
 			local stintersect, stmin, _ = self:IntersectRayWithSphere(rayStart, rayDirection, zmax, radius)
+			print(stintersect)
 			if stintersect then
 				hitPos = rayStart + (rayDirection * stmin)
 				hitNormal = hitPos - zmax
